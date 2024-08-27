@@ -1,7 +1,7 @@
 #include <WiFiNINA.h>
 #include "secret.h"
 #define LIGHT_SENSOR 2
-//please enter your sensitive data in the Secret tab
+
 char ssid[] = SECRET_SSID;
 char pass[] = SECRET_PASS;
 
@@ -82,11 +82,11 @@ void loop() {
     light_state = "Off";
   }
 
-  // Send notification only if state changes or 'c' is pressed
+ 
   if (light_state != last_light || Serial.read() == 'c') {
     sendWebhook(light_state);
     last_light = light_state;
   }
-  delay(1000); // Adjust delay based on desired update frequency
+  delay(1000); 
 
 }
