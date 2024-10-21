@@ -1,78 +1,74 @@
+#include <Wire.h>
+#include <BH1750.h>
 #include <WiFiNINA.h>
-#include "secret.h"
-#define LIGHT_SENSOR 2
+#include <ArduinoHttpClient.h>
 
-char ssid[] = SECRET_SSID;
-char pass[] = SECRET_PASS;
+// BH1750 object
+BH1750 lightMeter;
 
-WiFiClient client;
+// Wi-Fi credentials
+const char* ssid = "SECRET_SSID";
+const char* password = "SECRET_PASS";
 
-char HOST_NAME[] = "maker.ifttt.com";
+// IFTTT Webhooks keys and URLs
+const char* sunlight_on = "https://maker.ifttt.com/trigger/detect_sunlight/with/key/nblWwndO5qVwDE09UKRkxjbZGShq2iCeL6Xsa6N-7if";
 
-// Data variables for IFTTT
-String light_state = "Off";
-int value_of_light = 0;
-String last_stateof_light = "Off";
+WiFiClient wifiClient;
+HttpClient httpClient = HttpClient(wifiClient, "maker.ifttt.com", 80);
 
-bool connectToWiFi(char ssid[], char pass[]) {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.print("Attempting to connect to SSID: ");
-    Serial.println(ssid);
-    int i = 0;
-    while (WiFi.status() != WL_CONNECTED) {
-      WiFi.begin(ssid, pass);
-      Serial.print(".");
-      delay(5000);
-      if (i > 6) {
-        Serial.print("Wifi Connection Failed!");
-        return false;
-        break;
-      }
-      i++;
-    }
-    Serial.println("\nConnected.");
-    return true;
-  }
-  return true; 
-}
-
-int SenseLight() {
-  value_of_light = digitalRead(LIGHT_SENSOR);
-  return value_of_light;
-}
-
-void sendWebhook(String state) {
-  if (!client.connect(HOST_NAME, 80)) {
-    Serial.println("Connection failed!");
-    return;
-  }
-
-  Serial.println("Connected to server");
-  client.println("GET /trigger/Light_Changed/with/key/dCzgH4VqCd8yZ_jYfZseMYt86OHL13Bdzn5tjtvUlSZ HTTP/1.1");
-  client.println("Host: maker.ifttt.com");
-  client.println("Connection: close");
-  client.println();
-
-  client.stop();
-  Serial.println("Sent notification to IFTTT");
-}
+// Threshold for sunlight detection (in lux)
+const int sunlightThreshold = 10000;  // You can adjust this based on your testing
+bool sunlightPresent = false;
 
 void setup() {
-  Serial.begin(115200);
-  connectToWiFi(ssid, pass);
-  while (!Serial);
+  Serial.begin(9600);
 
-  pinMode(LIGHT_SENSOR, INPUT);
+  // Initialize the BH1750 sensor
+  Wire.begin();
+  lightMeter.begin();
+  
+  // Set up the built-in LED for visual feedback
+  pinMode(LED_BUILTIN, OUTPUT);
+
+  // Connect to Wi-Fi
+  connectToWiFi();
+
+  // Initial check of light intensity
+  float lux = lightMeter.readLightLevel();
+  sunlightPresent = (lux > sunlightThreshold);
 }
 
 void loop() {
-  int current_light = SenseLight();
+  float lux = lightMeter.readLightLevel();
+  Serial.print("Light Level: ");
+  Serial.print(lux);
+  Serial.println(" lux");
 
-  if (current_light > 0) {
-    light_state = "On";
-  } else {
-    light_state = "Off";
+  if (lux > sunlightThreshold && !sunlightPresent) {
+    // Sunlight detected
+    sunlightPresent = true;
+    digitalWrite(LED_BUILTIN, HIGH); // Turn on LED
+    sendIFTTTNotification(sunlight_on);
   }
 
-  if (light_state != last_stateof_light || Serial.read() == 'c') {
-    sendWebhook(lig
+  // Add delay here to ensure the loop runs at regular intervals
+  delay(5000);  // Check every 5 seconds
+}
+
+void connectToWiFi() {
+  Serial.print("Connecting to Wi-Fi");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.print(".");
+  }
+  Serial.println("Connected!");
+}
+
+void sendIFTTTNotification(const char* url) {
+  httpClient.get(url);
+  int statusCode = httpClient.responseStatusCode();
+  Serial.print("IFTTT response: ");
+  Serial.println(statusCode);
+  httpClient.stop();
+}
